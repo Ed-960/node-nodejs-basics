@@ -1,35 +1,41 @@
-import { Worker, isMainThread } from "worker_threads";
+import { Worker } from "worker_threads";
+import path from "path";
 import os from "os";
 
 const performCalculations = async () => {
-  if (isMainThread) {
-    const numCores = os.cpus().length;
-    const workerPromises = [];
+  const workerDir = path.resolve("src", "wt");
+  const workerPath = path.join(workerDir, "worker.js");
+  const numCPUs = os.cpus().length;
+  let calls = 0;
+  const workers = [];
 
-    const createWorker = (index) => {
-      return new Promise((resolve) => {
-        const worker = new Worker("./src/wt/worker.js", {
-          workerData: 10 + index,
-        });
-
-        worker.on("message", (result) => {
-          resolve(result);
-        });
-      });
-    };
-
-    for (let i = 0; i < numCores; i++) {
-      workerPromises.push(createWorker(i));
+  const update = () => {
+    calls++;
+    if (calls === numCPUs) {
+      console.log(workers);
     }
+  };
 
-    const results = await Promise.all(workerPromises);
-
-    results.forEach(({ status, data }, index) => {
-      console.log(`Worker ${index}: ${status} - ${data}`);
+  for (let i = 0; i < numCPUs; i++) {
+    const worker = new Worker(workerPath, {
+      workerData: i + 10,
     });
 
-    console.log("\nOverall Results:");
-    console.log(results.map(({ status, data }) => ({ status, data })));
+    worker.on("message", (data) => {
+      workers[i] = {
+        status: "resolved",
+        data,
+      };
+      update();
+    });
+
+    worker.on("error", () => {
+      workers[i] = {
+        status: "error",
+        data: null,
+      };
+      update();
+    });
   }
 };
 
